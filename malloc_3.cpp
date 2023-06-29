@@ -13,37 +13,142 @@ struct memory_data {
 */
 void* memory= nullptr;
   void memory_data() {
-      void* alline = sbrk(0);
-      int relventSize = alline%(32*128*1024);
-      int size = (32*128*1024)-relventSize;
-      memory = sbrk(size+ 11 * sizeof(MallocMetadata*)+32*128*1024);
-      memory = memory+size;
-      memset(memory, 0,10*sizeof(MallocMetadata*));
-      void* tempMovmment = memory+ 10*sizeof(MallocMetadata*);
+      void *alline = sbrk(0);
+      int relventSize = alline % (32 * 128 * 1024);
+      int size = (32 * 128 * 1024) - relventSize;
+      memory = sbrk(size + 11 * sizeof(MallocMetadata *) + 32 * 128 * 1024);
+      memory = memory + size;
+      memset(memory, 0, 10 * sizeof(MallocMetadata *));
+      void *tempMovmment = memory + 10 * sizeof(MallocMetadata *);
       for (int i = 0; i < 32; ++i) {
-          if(i==0)
-          {
-              MallocMetadata mallocMetadata{static_cast<size_t>(128 * 1024), true, tempMovmment+sizeof (MallocMetadata*)+128*1024, nullptr};
-              memmove(tempMovmment+ sizeof(MallocMetadata*), &mallocMetadata, sizeof(MallocMetadata));
+          if (i == 0) {
+              MallocMetadata mallocMetadata{static_cast<size_t>(128 * 1024), true, tempMovmment + sizeof(MallocMetadata *) + 128 * 1024, nullptr};
+              memmove(tempMovmment + sizeof(MallocMetadata *), &mallocMetadata, sizeof(MallocMetadata));
           }
-          if(i==31)
-          {
-              MallocMetadata mallocMetadata{static_cast<size_t>(128 * 1024), true, nullptr,tempMovmment+ sizeof(MallocMetadata*)+128*1024*31}
-              memmove(tempMovmment+ sizeof(MallocMetadata*), &mallocMetadata, sizeof(MallocMetadata));
-          }
-          else
-          {
-              MallocMetadata mallocMetadata{static_cast<size_t>(128 * 1024), true, tempMovmment+ sizeof(MallocMetadata*)+128*1024*(i-1),tempMovmment+
-              sizeof(MallocMetadata*)+128*1024*(i+1)}
-              memmove(tempMovmment+ sizeof(MallocMetadata*), &mallocMetadata, sizeof(MallocMetadata));
+          if (i == 31) {
+              MallocMetadata mallocMetadata{static_cast<size_t>(128 * 1024), true, nullptr, tempMovmment + sizeof(MallocMetadata *) + 128 * 1024 * 31}
+              memmove(tempMovmment + sizeof(MallocMetadata *), &mallocMetadata, sizeof(MallocMetadata));
+          } else {
+              MallocMetadata mallocMetadata{static_cast<size_t>(128 * 1024), true, tempMovmment + sizeof(MallocMetadata *) + 128 * 1024 * (i - 1),
+                                            tempMovmment +
+                                            sizeof(MallocMetadata *) + 128 * 1024 * (i + 1)}
+              memmove(tempMovmment + sizeof(MallocMetadata *), &mallocMetadata, sizeof(MallocMetadata));
           }
 
-};
-
-
-
+      }}
+      void* smalloc(size_t size) {
+          MallocMetadata *temp = memory;
+          if (size < 1 << 8) {
+              int found = 0;
+              while (found < 11) {
+                  if (temp == 0) {
+                      temp++;
+                  } else {
+                      MallocMetadata *temp1 = temp;
+                      while (temp1 != nullptr && temp1->is_free == false) {
+                          temp1 = temp1->next;
+                      }
+                      if (temp1) {
+                          if (temp1->size == 1 << 8) {
+                              temp1->is_free = false;
+                              return temp;
+                          } else {
+                              return cut_size();//later fill in
+                          }
+                      } else {
+                          temp++;
+                      }
+                      found++;
+                  }
+                  if (found == 11) {
+                      return nullptr;
+                  }
+              }
+          } else {
+              int found = 0;
+              while (found < 11) {
+                  while ((temp == 0 || temp->size < size) && found < 11) {
+                      temp++;
+                      found++;
+                  }
+                  if (found == 11)
+                      return nullptr;
+                  MallocMetadata *temp1 = temp;
+                  while (temp1 && temp1->is_free = false)
+                      temp1 = temp1->next;
+                  if (temp1) {
+                      if (temp1->size == size) {
+                          temp1->is_free = false;
+                          return temp1;
+                      } else {
+                          return cut_size();//later fill in
+                      }
+                  }
+                  found++;
+              }
+          }
+      }
+}
+void* scalloc(size_t num, size_t size)
+{
+    void *address = smalloc(num * size);
+    if (address)
+        memset(address, 0, num * size);
+    return address;
+}
+void* srealloc(void* oldp, size_t size) {
+    if (size == 0 || size > 1e8)
+        return nullptr;
+    if (!oldp)
+        return smalloc(size);
+    MallocMetadata *temp = oldp;
+    if (temp->size > size)
+        return oldp;
+    double result = log2(size);
+    int roundedResult = static_cast<int>(round(result));
+    int num = roundedResult;
+    if (!(result == roundedResult)) {
+        num += 1;
+    }
+    MallocMetadata *ptr = memory;
+    ptr = ptr + sizeof(MallocMetadata *) * (num - 7);
+    while (num - 7 < 11) {
+        if (ptr) {
+            MallocMetadata *temp = ptr;
+            while (temp && temp->is_free == false) {
+                temp = temp->next;
+            }
+            if (temp) {
+                if (temp->size < size * 2) {
+                    memcpy(oldp, temp, static_cast<MallocMetadata *>(oldp)->size);
+                    sfree(oldp);
+                    temp->is_free = false;
+                    return temp;
+                } else {
+                    void *tempRet = actual_cut();//later
+                    memcpy(oldp, tempRet, static_cast<MallocMetadata *>(oldp)->size);
+                    sfree(oldp);
+                    return tempRet;
+                }
+            }
+        }
+        num++;
+        ptr = ptr + sizeof(MallocMetadata *);
+    }
+    sfree(oldp);
+    return nullptr;
+}
 void cut_block(void* mem, size_t sizeBlock,size_t sizeNeeded,memory_data* memoryData)
 {
+
+
+
+
+
+
+
+
+
 
 }
 
