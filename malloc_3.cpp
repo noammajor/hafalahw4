@@ -1,48 +1,64 @@
 #include <iostream>
 #include <cmath>
-struct MallocMetadata {
+#include <unistd.h>
+#include <stdio.h>
+#include <memory.h>
+
+# define MOD_BLOCK_SIZE 4096
+
+
+struct  MallocMetadata {
     size_t size;
     bool is_free;
-    MallocMetadata* next;
-    MallocMetadata* prev;
-};
-/*
-struct memory_data {
-    void *memory;
-    int Max_size = 10;
-*/
-void* memory= nullptr;
-  void memory_data() {
-      void* alline = sbrk(0);
-      int relventSize = alline%(32*128*1024);
-      int size = (32*128*1024)-relventSize;
-      memory = sbrk(size+ 11 * sizeof(MallocMetadata*)+32*128*1024);
-      memory = memory+size;
-      memset(memory, 0,10*sizeof(MallocMetadata*));
-      void* tempMovmment = memory+ 10*sizeof(MallocMetadata*);
-      for (int i = 0; i < 32; ++i) {
-          if(i==0)
-          {
-              MallocMetadata mallocMetadata{static_cast<size_t>(128 * 1024), true, tempMovmment+sizeof (MallocMetadata*)+128*1024, nullptr};
-              memmove(tempMovmment+ sizeof(MallocMetadata*), &mallocMetadata, sizeof(MallocMetadata));
-          }
-          if(i==31)
-          {
-              MallocMetadata mallocMetadata{static_cast<size_t>(128 * 1024), true, nullptr,tempMovmment+ sizeof(MallocMetadata*)+128*1024*31}
-              memmove(tempMovmment+ sizeof(MallocMetadata*), &mallocMetadata, sizeof(MallocMetadata));
-          }
-          else
-          {
-              MallocMetadata mallocMetadata{static_cast<size_t>(128 * 1024), true, tempMovmment+ sizeof(MallocMetadata*)+128*1024*(i-1),tempMovmment+
-              sizeof(MallocMetadata*)+128*1024*(i+1)}
-              memmove(tempMovmment+ sizeof(MallocMetadata*), &mallocMetadata, sizeof(MallocMetadata));
-          }
-
+    MallocMetadata *next;
+    MallocMetadata *prev;
 };
 
+void* memory_base = nullptr;
+
+void memory_data()
+{
+    memory_base = sbrk(0);
+    int relventSize = (long long int)memory_base % (32*128*1024);
+    int diff = (32*128*1024) - relventSize;
+    memory_base = sbrk(diff);
+    memory_base = sbrk(11 * sizeof(MallocMetadata*) + 32*128*1024);
+    memset(memory_base, 0,10*sizeof(MallocMetadata*));
+    MallocMetadata* listPtr = (MallocMetadata*)memory_base+ 10;    //ptr from table to max_size linked list
+    MallocMetadata* headAddress = listPtr + 1;
+    memmove(listPtr, headAddress, 1);
+    listPtr++;
+    for (int i = 0; i < 32 ; ++i)
+    {
+        MallocMetadata mallocMetadata;
+        if (i == 0)
+            mallocMetadata = {128 * 1024, true, listPtr + MOD_BLOCK_SIZE, nullptr};
+        else if (i == 31)
+            mallocMetadata = {128 * 1024, true, nullptr, listPtr + MOD_BLOCK_SIZE * 31};
+        else
+            mallocMetadata = {128 * 1024, true, listPtr + MOD_BLOCK_SIZE * (i + 1),
+                                          listPtr + MOD_BLOCK_SIZE * (i - 1)};
+        memmove(listPtr + i * MOD_BLOCK_SIZE, &mallocMetadata, sizeof(MallocMetadata));
+    }
+}
 
 
-void cut_block(void* mem, size_t sizeBlock,size_t sizeNeeded,memory_data* memoryData)
+int main()
+{
+    memory_data();
+    std::cout << memory_base << std::endl;
+    MallocMetadata* ptr = (MallocMetadata*)memory_base + 11;
+    int i = 1;
+    while (ptr->next && i < 40)
+    {
+        std::cout << "block #" << i << "  size: " << ptr->size << std::endl;
+        i++;
+        ptr = ptr->next;
+    }
+}
+
+
+/*void cut_block(void* mem, size_t sizeBlock,size_t sizeNeeded,memory_data* memoryData)
 {
 
 }
@@ -113,4 +129,4 @@ void cut_block(void* mem, size_t sizeBlock,size_t sizeNeeded,memory_data* memory
           temp2->prev=temp1;
           temp2->next=temp3;
           temp3->prev=temp2;
-      }
+      }*/
