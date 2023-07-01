@@ -15,103 +15,126 @@ struct  MallocMetadata {
 };
 
 void* memory_base = nullptr;
+MallocMetadata* blocks_base = nullptr;
+MallocMetadata** size_table = nullptr;
 
+
+//allocate space in heap at the first call to malloc
 void memory_data()
 {
     memory_base = sbrk(0);
-    int relventSize = (long long int)memory_base % (32*128*1024);
-    int diff = (32*128*1024) - relventSize;
+    int relventSize = ((long long int)memory_base + 11 * sizeof(MallocMetadata**)) % (32*128*1024);
+    int diff = (32*128*1024) - relventSize + 11 * sizeof(MallocMetadata**);
     memory_base = sbrk(diff);
-    memory_base = sbrk(11 * sizeof(MallocMetadata*) + 32*128*1024);
-    memset(memory_base, 0,10*sizeof(MallocMetadata*));
-    MallocMetadata* listPtr = (MallocMetadata*)memory_base+ 10;    //ptr from table to max_size linked list
-    MallocMetadata* headAddress = listPtr + 1;
-    memmove(listPtr, headAddress, 1);
-    listPtr++;
+    memory_base = sbrk(32*128*1024);
+    size_table = (MallocMetadata**)memory_base - 11;        //points to the 11-size table
+    blocks_base = (MallocMetadata*)memory_base;     //points to the start of the metadata blocks
+    for (int i = 0 ; i < 10 ; i++)
+        size_table[i] = nullptr;
+    size_table[10] = blocks_base;   //ptr from table to max_size linked list
     for (int i = 0; i < 32 ; ++i)
     {
         MallocMetadata mallocMetadata;
         if (i == 0)
-            mallocMetadata = {128 * 1024, true, listPtr + MOD_BLOCK_SIZE, nullptr};
+            mallocMetadata = {128 * 1024, true, blocks_base + MOD_BLOCK_SIZE, nullptr};
         else if (i == 31)
-            mallocMetadata = {128 * 1024, true, nullptr, listPtr + MOD_BLOCK_SIZE * 31};
+            mallocMetadata = {128 * 1024, true, nullptr, blocks_base + MOD_BLOCK_SIZE * 31};
         else
-            mallocMetadata = {128 * 1024, true, listPtr + MOD_BLOCK_SIZE * (i + 1),
-                                          listPtr + MOD_BLOCK_SIZE * (i - 1)};
-        memmove(listPtr + i * MOD_BLOCK_SIZE, &mallocMetadata, sizeof(MallocMetadata));
+            mallocMetadata = {128 * 1024, true, blocks_base + MOD_BLOCK_SIZE * (i + 1),blocks_base + MOD_BLOCK_SIZE * (i - 1)};
+        memmove(blocks_base + i * MOD_BLOCK_SIZE, &mallocMetadata, sizeof(MallocMetadata));
     }
 }
 
 
-int main()
+void*  mapMalloc(size_t size)       /////////////////////////////////do later
 {
-    memory_data();
-    std::cout << memory_base << std::endl;
-    MallocMetadata* ptr = (MallocMetadata*)memory_base + 11;
-    int i = 1;
-    while (ptr->next && i < 40)
+    return nullptr;
+}
+
+
+void* findBlock(int sizeFactor)
+{
+    MallocMetadata* finalBlock;
+    int splitCnt = 0;
+    bool found = false;
+    while (!found && sizeFactor < 11)
     {
-        std::cout << "block #" << i << "  size: " << ptr->size << std::endl;
-        i++;
-        ptr = ptr->next;
-    }
-}
-
-
-
-void* smalloc(size_t size) {
-    MallocMetadata *temp = memory;
-    if (size < 1 << 8) {
-        int found = 0;
-        while (found < 11) {
-            if (temp == 0) {
-                temp++;
-            } else {
-                MallocMetadata *temp1 = temp;
-                while (temp1 != nullptr && temp1->is_free == false) {
-                    temp1 = temp1->next;
-                }
-                if (temp1) {
-                    if (temp1->size == 1 << 8) {
-                        temp1->is_free = false;
-                        return temp;
-                    } else {
-                        return cut_size();//later fill in
-                    }
-                } else {
-                    temp++;
-                }
-                found++;
-            }
-            if (found == 11) {
-                return nullptr;
-            }
+        while (!size_table[sizeFactor])
+        {
+            splitCnt++;
+            sizeFactor++;
         }
-    } else {
-        int found = 0;
-        while (found < 11) {
-            while ((temp == 0 || temp->size < size) && found < 11) {
-                temp++;
-                found++;
-            }
-            if (found == 11)
-                return nullptr;
-            MallocMetadata *temp1 = temp;
-            while (temp1 && temp1->is_free = false)
-                temp1 = temp1->next;
-            if (temp1) {
-                if (temp1->size == size) {
-                    temp1->is_free = false;
-                    return temp1;
-                } else {
-                    return cut_size();//later fill in
-                }
-            }
-            found++;
+        finalBlock = size_table[sizeFactor];
+        int i = 1;
+        while (finalBlock && !finalBlock->is_free && finalBlock->size > 0)
+        {
+            i++;
+            finalBlock = finalBlock->next;
         }
+        if (finalBlock && finalBlock->is_free)
+            found = true;
+        splitCnt++;
+        sizeFactor++;
     }
+    splitCnt--;
+    sizeFactor--;
+    if (!found)
+        return nullptr;
+
+    if (finalBlock->next)       //remove the block from the list
+        finalBlock->next->prev = finalBlock->prev;
+    if (finalBlock->prev)
+        finalBlock->prev->next = finalBlock->next;
+    else
+        size_table[sizeFactor] = finalBlock->next;
+
+    while (splitCnt > 0)
+    {
+        finalBlock->size  = finalBlock->size / 2;
+        long long unsigned int buddyAddress = (size_t)finalBlock ^ finalBlock->size;
+
+        splitCnt--;
+        sizeFactor--;
+        MallocMetadata* tempNext = size_table[sizeFactor];
+        MallocMetadata* buddy = (MallocMetadata*)buddyAddress;
+        size_t curSize = 128 * pow(2, sizeFactor + splitCnt);
+        *buddy = {curSize, true, tempNext, nullptr};
+        size_table[sizeFactor] = buddy;
+        if (tempNext)
+            tempNext->prev = buddy;
+    }
+
+    MallocMetadata* tempNext = size_table[sizeFactor];
+    size_table[sizeFactor] = finalBlock;
+    size_t curSize = 128 * pow(2, sizeFactor);
+    *finalBlock = {curSize, true, tempNext, nullptr};
+    if (tempNext)
+        tempNext->prev = finalBlock;
+    return finalBlock;
 }
+
+
+void* smalloc(size_t size)
+{
+    if (size <= 0)
+        return nullptr;
+    else if (size > pow(2, 17) - sizeof(MallocMetadata))
+        return mapMalloc(size);     ///////////////////////////////////// map allocation function
+
+    if (!memory_base)       // allocate the heap on the first call
+        memory_data();
+
+    size_t maxSize = pow(2,7) - sizeof(MallocMetadata);
+    int reqSizeFactor = 0;
+    while (size > maxSize)
+    {
+        maxSize = (maxSize + sizeof(MallocMetadata)) * 2 - sizeof(MallocMetadata);
+        reqSizeFactor++;
+    }
+    return findBlock(reqSizeFactor);
 }
+
+
 void* scalloc(size_t num, size_t size)
 {
     void *address = smalloc(num * size);
@@ -119,26 +142,29 @@ void* scalloc(size_t num, size_t size)
         memset(address, 0, num * size);
     return address;
 }
+
+
 void* srealloc(void* oldp, size_t size) {
     if (size == 0 || size > 1e8)
         return nullptr;
     if (!oldp)
         return smalloc(size);
-    MallocMetadata *temp = oldp;
-    if (temp->size > size)
+    if (((MallocMetadata*)oldp)->size >= size + 1)
         return oldp;
+
+    ///////////////////////////// mmap realloc ?
+
+    MallocMetadata *temp = oldp;
     double result = log2(size);
-    int roundedResult = static_cast<int>(round(result));
-    int num = roundedResult;
-    if (!(result == roundedResult)) {
-        num += 1;
-    }
+    int roundedResult = (int)round(result);
+    if (result != roundedResult)
+        roundedResult++;
     MallocMetadata *ptr = memory;
-    ptr = ptr + sizeof(MallocMetadata *) * (num - 7);
-    while (num - 7 < 11) {
+    ptr = ptr + sizeof(MallocMetadata *) * (roundedResult - 7);
+    while (roundedResult - 7 < 11) {
         if (ptr) {
             MallocMetadata *temp = ptr;
-            while (temp && temp->is_free == false) {
+            while (temp && !temp->is_free) {
                 temp = temp->next;
             }
             if (temp) {
@@ -155,7 +181,7 @@ void* srealloc(void* oldp, size_t size) {
                 }
             }
         }
-        num++;
+        roundedResult++;
         ptr = ptr + sizeof(MallocMetadata *);
     }
     sfree(oldp);
@@ -163,75 +189,19 @@ void* srealloc(void* oldp, size_t size) {
 }
 
 
-/*void cut_block(void* mem, size_t sizeBlock,size_t sizeNeeded,memory_data* memoryData)
+int main()
 {
-
+    /*MallocMetadata* ptr = (MallocMetadata*)memory_base + 11;
+    int i = 1;
+    while (ptr->next)
+    {
+        std::cout << "block #" << i << "  size: " << ptr->size << std::endl;
+        i++;
+        ptr = ptr->next;
+    }
+    std::cout << "block #" << i << "  size: " << ptr->size << std::endl;
+    size_t size = pow(2,7) - sizeof(MallocMetadata);
+    std::cout << size ;*/
+    std::cout << smalloc(30) << std::endl;
+    return 0;
 }
-
-
-
-
-
-
-
-
-}
-
-      double result = log2(sizeNeeded);
-      int roundedResult = static_cast<int>(ceil(result));
-      size_t actual_cut = 1>>roundedResult;
-      size_t remander = sizeBlock-actual_cut;
-      int roundedRemander = log2(remander);
-      void* temp = memoryData->memory;
-      // moving the memory pointer to the place i need it in the array of ptrs
-      char *charPtr = static_cast<char *>(temp);
-      charPtr += roundedRemander*sizeof(MallocMetadata);
-      temp = static_cast<void *>(charPtr);
-      // cutting the memory
-      char *charPtr1 = static_cast<char *>(mem);
-      charPtr1 += actual_cut*sizeof(MallocMetadata);
-      void* tempNewMemory = static_cast<void *>(charPtr1);
-      MallocMetadata mallocMetadata{static_cast<size_t>(1>>roundedRemander), false, nullptr, nullptr};
-      memmove(tempNewMemory, &mallocMetadata, sizeof(MallocMetadata));
-      //putting it in
-      MallocMetadata *head = static_cast<MallocMetadata *>(temp);
-      while(tempNewMemory>head)
-          head=head->next;
-      head=head->prev;
-      if(head== nullptr)//begining of the list
-      {
-
-      }
-      else
-      {
-          MallocMetadata* temp2 = static_cast<MallocMetadata *>(tempNewMemory);
-          MallocMetadata* temp1=head->next;
-          head->next = temp2;
-          temp2->prev=head;
-          temp2->next=temp1;
-          temp1->prev=temp2;
-      }
-      //putting the used memory in
-      charPtr = static_cast<char *>(temp);
-      charPtr += roundedResult*sizeof(MallocMetadata);
-      temp = static_cast<void *>(charPtr);
-      MallocMetadata mallocMetadata1{static_cast<size_t>(1>>roundedResult), false, nullptr, nullptr};
-      memmove(mem, &mallocMetadata1, sizeof(MallocMetadata));
-      MallocMetadata* temp1 = static_cast<MallocMetadata*>(temp);
-
-      while(temp1<mem)
-          temp1=temp1->next;
-      temp1=temp1->prev;
-      if(temp1== nullptr)//begining of the list
-      {
-
-      }
-      else
-      {
-          MallocMetadata* temp2 = static_cast<MallocMetadata *>(mem);
-          MallocMetadata* temp3=temp1->next;
-          temp1->next = temp2;
-          temp2->prev=temp1;
-          temp2->next=temp3;
-          temp3->prev=temp2;
-      }
