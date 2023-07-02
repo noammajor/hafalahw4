@@ -18,6 +18,7 @@ struct  MallocMetadata {
 void* memory_base = nullptr;
 MallocMetadata* blocks_base = nullptr;
 MallocMetadata** size_table = nullptr;
+MallocMetadata* mmapBlock = nullptr;
 
 
 //allocate space in heap at the first call to malloc
@@ -49,7 +50,28 @@ void memory_data()
 
 void*  mapMalloc(size_t size)       /////////////////////////////////do later
 {
-    return nullptr;
+    bool is_first=false;
+    MallocMetadata* temp = mmapBlock;
+    if (temp== nullptr)
+    {
+        is_first=true;
+    }
+    else
+    {
+        while (temp->next)
+            temp=temp->next;
+    }
+    void* ptr = mmap(nullptr,size+sizeof(MallocMetadata),PROT_READ | PROT_WRITE  ,MAP_ANONYMOUS ,-1,0);
+    if((void*) ptr ==-1)
+        return nullptr;
+    if(is_first)
+        MallocMetadata meta = {size, false, nullptr, nullptr};
+    else
+        MallocMetadata meta = {size, false, nullptr, temp};
+    memmove(ptr, &meta, sizeof (MallocMetadata));
+    temp->next = ptr;
+    ptr = ((MallocMetadata*)ptr)++;
+    return ptr;
 }
 
 
@@ -162,8 +184,7 @@ void* smalloc(size_t size)
     if (size <= 0)
         return nullptr;
     else if (size > pow(2, 17) - sizeof(MallocMetadata))
-        return mapMalloc(size);     ///////////////////////////////////// map allocation function
-
+        return mapMalloc(size);
     if (!memory_base)       // allocate the heap on the first call
         memory_data();
 
@@ -187,11 +208,16 @@ void* scalloc(size_t num, size_t size)
     return address;
 }
 
-void mmapFree(void* p)
+void mmapFree(void* ptr)
 {
-
+    MallocMetadata *temp = (MallocMetadata *) ptr;
+    temp = temp--;
+    MallocMetadata *temp1 = temp->prev;
+    MallocMetadata *temp2 = temp->next;
+    temp1->next = temp2;
+    temp2->prev = temp1;
+    mummap((void) *temp, temp->size + sizeof(MallocMetadata));
 }
-
 
 void sfree(void* p)
 {
@@ -211,6 +237,17 @@ void sfree(void* p)
 
 
 void* srealloc(void* oldp, size_t size) {
+    MallocMetadata* temp = (MallocMetadata*) oldp;
+    temp=temp--;
+    if(temp->size==size)
+        return oldp;
+    if(temp->size>pow(2,17)- sizeof(MallocMetadata))
+    {
+        void* ptr = smalloc(size);
+        memmove(ptr,oldp,temp->size);
+        mmapFree(oldp);
+        return ptr;
+    }
     if (size == 0 || size > 1e8)
         return nullptr;
     if (!oldp)
@@ -218,9 +255,6 @@ void* srealloc(void* oldp, size_t size) {
     size_t reqSize = size + sizeof(MallocMetadata);
     if (((MallocMetadata*)oldp-1)->size >= reqSize)
         return oldp;
-
-    ///////////////////////////// mmap realloc ?
-
     MallocMetadata* mergedBlock = mergeBuddies((MallocMetadata*)oldp - 1,  reqSize);           //////////////write mergeBlocks func
     if (mergedBlock->size >= reqSize)
     {
