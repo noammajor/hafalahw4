@@ -5,7 +5,7 @@
 #include <memory.h>
 #include <sys/mman.h>
 
-# define MOD_BLOCK_SIZE 4096
+# define MOD_BLOCK_SIZE 8192
 #define MAX_SIZE 128 * 1024
 
 struct Stats {
@@ -15,13 +15,17 @@ struct Stats {
     size_t allocated_bytes;
     size_t size_meta_data;
 };
+
+
 struct  MallocMetadata {
+    int cookie;
     size_t size;
     bool is_free;
-    int cookie;
     MallocMetadata* next;
     MallocMetadata* prev;
 };
+
+
 int cookie = rand();
 void* memory_base = nullptr;
 MallocMetadata* blocks_base = nullptr;
@@ -46,11 +50,11 @@ void memory_data()
     {
         MallocMetadata mallocMetadata;
         if (i == 0)
-            mallocMetadata = {128 * 1024, true, cookie, blocks_base + MOD_BLOCK_SIZE, nullptr};
+            mallocMetadata = {cookie,128 * 1024, true,  blocks_base + MOD_BLOCK_SIZE, nullptr};
         else if (i == 31)
-            mallocMetadata = {128 * 1024, true, cookie, nullptr, blocks_base + MOD_BLOCK_SIZE * 31};
+            mallocMetadata = {cookie, 128 * 1024, true, nullptr, blocks_base + MOD_BLOCK_SIZE * 31};
         else
-            mallocMetadata = {128 * 1024, true,cookie, blocks_base + MOD_BLOCK_SIZE * (i + 1),blocks_base + MOD_BLOCK_SIZE * (i - 1)};
+            mallocMetadata = {cookie, 128 * 1024, true,blocks_base + MOD_BLOCK_SIZE * (i + 1),blocks_base + MOD_BLOCK_SIZE * (i - 1)};
         memmove(blocks_base + i * MOD_BLOCK_SIZE, &mallocMetadata, sizeof(MallocMetadata));
     }
     stats->allocated_bytes = 32;
@@ -67,7 +71,7 @@ void* mapMalloc(size_t size)
     if(ptr == (void*) -1)
         return nullptr;
     stats->allocated_bytes+=size+sizeof(MallocMetadata);
-    MallocMetadata meta = {size, false, nullptr, mmapBlock};
+    MallocMetadata meta = {cookie, size, false, nullptr, mmapBlock};
     memmove(ptr, &meta, sizeof(MallocMetadata));
     mmapBlock = (MallocMetadata*)ptr;
     return (MallocMetadata*)ptr + 1;
@@ -83,20 +87,18 @@ void* findBlock(int sizeFactor)
     {
         while (!size_table[sizeFactor])
         {
-            if(size_table[sizeFactor]->cookie!=cookie)
-                exit(0xdeadbeef);
             splitCnt++;
             sizeFactor++;
         }
         finalBlock = size_table[sizeFactor];
         int i = 1;
-        while (finalBlock && !finalBlock->is_free && finalBlock->size > 0)
+        while (finalBlock && finalBlock->cookie == cookie && !finalBlock->is_free && finalBlock->size > 0)
         {
-            if (finalBlock->cookie!=cookie)
-                exit(0xdeadbeef);
             i++;
             finalBlock = finalBlock->next;
         }
+        if (finalBlock && finalBlock->cookie != cookie)
+            exit(0xdeadbeef);
         if (finalBlock && finalBlock->is_free)
             found = true;
         splitCnt++;
@@ -107,9 +109,9 @@ void* findBlock(int sizeFactor)
     if (!found)
         return nullptr;
 
-    if (finalBlock->next)       //remove the block from the list
+    if (finalBlock->next && finalBlock->next->cookie == cookie)       //remove the block from the list
         finalBlock->next->prev = finalBlock->prev;
-    if (finalBlock->prev)
+    if (finalBlock->prev && finalBlock->prev->cookie == cookie)
         finalBlock->prev->next = finalBlock->next;
     else
         size_table[sizeFactor] = finalBlock->next;
@@ -123,19 +125,21 @@ void* findBlock(int sizeFactor)
         sizeFactor--;
         MallocMetadata* tempNext = size_table[sizeFactor];
         MallocMetadata* buddy = (MallocMetadata*)buddyAddress;
-        if(tempNext->cookie!=cookie || buddy->cookie!=cookie)
-            exit(0xdeadbeef);
         size_t curSize = 128 * pow(2, sizeFactor + splitCnt);
-        *buddy = {curSize, true, tempNext, nullptr};
+        *buddy = {cookie, curSize, true, tempNext, nullptr};
         size_table[sizeFactor] = buddy;
         if (tempNext)
+        {
+            if(tempNext->cookie != cookie)
+                exit(0xdeadbeef);
             tempNext->prev = buddy;
+        }
     }
 
     MallocMetadata* tempNext = size_table[sizeFactor];
     size_table[sizeFactor] = finalBlock;
     size_t curSize = 128 * pow(2, sizeFactor);
-    *finalBlock = {curSize, false, tempNext, nullptr};
+    *finalBlock = {cookie, curSize, false, tempNext, nullptr};
     if (tempNext)
         tempNext->prev = finalBlock;
     return finalBlock;
@@ -191,7 +195,7 @@ void* smalloc(size_t size)
     if (!memory_base)       // allocate the heap on the first call
         memory_data();
 
-    if (size > pow(2, 17) - sizeof(MallocMetadata))
+    if (size > MAX_SIZE - sizeof(MallocMetadata))
         return mapMalloc(size);
 
     size_t maxSize = pow(2,7) - sizeof(MallocMetadata);
@@ -228,7 +232,7 @@ void mmapFree(void* ptr)
 void sfree(void* p)
 {
     MallocMetadata* block = (MallocMetadata*)p - 1;
-    if(block->cookie!=cookie)
+    if(block->cookie != cookie)
         exit(0xdeadbeef);
     if (block->is_free)
         return;
@@ -246,12 +250,12 @@ void sfree(void* p)
 
 void* srealloc(void* oldp, size_t size) {
     MallocMetadata* temp = (MallocMetadata*) oldp;
-    temp=temp--;
-    if(temp->cookie!=cookie)
+    temp--;
+    if(temp->cookie != cookie)
         exit(0xdeadbeef);
-    if(temp->size==size)
+    if(temp->size == size)
         return oldp;
-    if(temp->size>pow(2,17)- sizeof(MallocMetadata))
+    if(temp->size > MAX_SIZE - sizeof(MallocMetadata))
     {
         void* ptr = smalloc(size);
         memmove(ptr,oldp,temp->size);

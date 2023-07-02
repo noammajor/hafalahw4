@@ -79,8 +79,6 @@ void sfree(void* p)
             ptr->is_free = true;
             stats.free_blocks++;
             stats.free_bytes += ptr->size;
-            stats.allocated_blocks--;
-            stats.allocated_bytes -= ptr->size;
             return;
         }
     }
@@ -147,7 +145,7 @@ size_t _num_allocated_bytes()
 //Returns the overall number of meta-data bytes currently in the heap.
 size_t _num_meta_data_bytes()
 {
-    return (stats.size_meta_data * (stats.allocated_blocks + stats.free_blocks));
+    return (stats.size_meta_data * (stats.allocated_blocks));
 }
 
 //Returns the number of bytes of a single meta-data structure in your system
