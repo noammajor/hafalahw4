@@ -100,8 +100,8 @@ void* findBlock(int sizeFactor)
             exit(0xdeadbeef);
         if (finalBlock && finalBlock->is_free)
             found = true;
-        splitCnt++;                                                             //1
-        sizeFactor++;                                                           //2
+        splitCnt++;
+        sizeFactor++;
     }
     splitCnt--;
     sizeFactor--;
@@ -119,15 +119,14 @@ void* findBlock(int sizeFactor)
     {
         stats.allocated_blocks += 1;
         stats.free_blocks += 1;
-        finalBlock->size  = pow(2, sizeFactor-1) * 128;
+        finalBlock->size /= 2;
         long long unsigned int buddyAddress = (size_t)finalBlock ^ finalBlock->size;
 
         splitCnt--;
         sizeFactor--;
         MallocMetadata* tempNext = size_table[sizeFactor];
         MallocMetadata* buddy = (MallocMetadata*)buddyAddress;
-        size_t curSize = 128 * pow(2, sizeFactor + splitCnt);
-        *buddy = {cookie, curSize, true, tempNext, nullptr};
+        *buddy = {cookie, finalBlock->size, true, tempNext, nullptr};
 
         size_table[sizeFactor] = buddy;
         if (tempNext)
@@ -310,7 +309,7 @@ size_t _num_free_blocks()
 //        excluding the bytes used by the meta-data structs.
 size_t _num_free_bytes()
 {
-    return stats.free_bytes;
+    return stats.free_bytes - stats.free_blocks * stats.size_meta_data;
 }
 
 //Returns the overall (free and used) number of allocated blocks in the heap.
@@ -322,7 +321,7 @@ size_t _num_allocated_blocks()
 //Returns the overall number (free and used) of allocated bytes in the heap, excluding the bytes used by the meta-data structs.
 size_t _num_allocated_bytes()
 {
-    return stats.allocated_bytes;
+    return stats.allocated_bytes - stats.allocated_blocks * stats.size_meta_data;
 }
 
 //Returns the overall number of meta-data bytes currently in the heap.

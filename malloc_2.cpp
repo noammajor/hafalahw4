@@ -127,7 +127,7 @@ size_t _num_free_blocks()
 //        excluding the bytes used by the meta-data structs.
 size_t _num_free_bytes()
 {
-    return stats.free_bytes;
+    return stats.free_bytes - stats.free_blocks * stats.size_meta_data;
 }
 
 //Returns the overall (free and used) number of allocated blocks in the heap.
@@ -139,7 +139,7 @@ size_t _num_allocated_blocks()
 //Returns the overall number (free and used) of allocated bytes in the heap, excluding the bytes used by the meta-data structs.
 size_t _num_allocated_bytes()
 {
-    return stats.allocated_bytes;
+    return stats.allocated_bytes - stats.allocated_blocks * stats.size_meta_data;
 }
 
 //Returns the overall number of meta-data bytes currently in the heap.
