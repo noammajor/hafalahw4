@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <memory.h>
+#include <sys/mman.h>
 
 # define MOD_BLOCK_SIZE 4096
 #define MAX_SIZE 128 * 1024
@@ -48,30 +49,16 @@ void memory_data()
 }
 
 
-void*  mapMalloc(size_t size)       /////////////////////////////////do later
+void* mapMalloc(size_t size)
 {
-    bool is_first=false;
-    MallocMetadata* temp = mmapBlock;
-    if (temp== nullptr)
-    {
-        is_first=true;
-    }
-    else
-    {
-        while (temp->next)
-            temp=temp->next;
-    }
-    void* ptr = mmap(nullptr,size+sizeof(MallocMetadata),PROT_READ | PROT_WRITE  ,MAP_ANONYMOUS ,-1,0);
-    if((void*) ptr ==-1)
+    void* ptr = mmap(nullptr, size+sizeof(MallocMetadata), PROT_READ | PROT_WRITE, MAP_ANONYMOUS, -1, 0);
+    if(ptr == (void*) -1)
         return nullptr;
-    if(is_first)
-        MallocMetadata meta = {size, false, nullptr, nullptr};
-    else
-        MallocMetadata meta = {size, false, nullptr, temp};
-    memmove(ptr, &meta, sizeof (MallocMetadata));
-    temp->next = ptr;
-    ptr = ((MallocMetadata*)ptr)++;
-    return ptr;
+
+    MallocMetadata meta = {size, false, nullptr, mmapBlock};
+    memmove(ptr, &meta, sizeof(MallocMetadata));
+    mmapBlock = (MallocMetadata*)ptr;
+    return (MallocMetadata*)ptr + 1;
 }
 
 
@@ -183,10 +170,11 @@ void* smalloc(size_t size)
 {
     if (size <= 0)
         return nullptr;
-    else if (size > pow(2, 17) - sizeof(MallocMetadata))
-        return mapMalloc(size);
     if (!memory_base)       // allocate the heap on the first call
         memory_data();
+
+    if (size > pow(2, 17) - sizeof(MallocMetadata))
+        return mapMalloc(size);
 
     size_t maxSize = pow(2,7) - sizeof(MallocMetadata);
     int reqSizeFactor = 0;
@@ -211,12 +199,12 @@ void* scalloc(size_t num, size_t size)
 void mmapFree(void* ptr)
 {
     MallocMetadata *temp = (MallocMetadata *) ptr;
-    temp = temp--;
-    MallocMetadata *temp1 = temp->prev;
-    MallocMetadata *temp2 = temp->next;
-    temp1->next = temp2;
-    temp2->prev = temp1;
-    mummap((void) *temp, temp->size + sizeof(MallocMetadata));
+    temp--;
+    if (temp->next)
+        temp->next->prev = temp->prev;
+    if(temp->prev)
+        temp->prev->next = temp->next;
+    munmap(temp, temp->size);
 }
 
 void sfree(void* p)
@@ -226,7 +214,7 @@ void sfree(void* p)
         return;
 
     if (block->size > MAX_SIZE)
-        mmapFree(p);        //////////////////////////////////////// mmap
+        mmapFree(p);
 
     else
     {
