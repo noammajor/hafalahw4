@@ -6,7 +6,7 @@
 #include <sys/mman.h>
 
 # define MOD_BLOCK_SIZE 2048
-#define MAX_SIZE 128 * 1024
+#define MAX_SIZE (128 * 1024)
 
 struct Stats {
     size_t free_blocks;
@@ -38,15 +38,16 @@ void memory_data()
 {
     cookie = rand();
     memory_base = sbrk(0);
-    int relventSize = ((long long int)memory_base + 11 * sizeof(MallocMetadata**)) % (32*128*1024);
-    int diff = (32*128*1024) - relventSize + 11 * sizeof(MallocMetadata**);
+    int relventSize = ((long long int)memory_base + 12 * sizeof(MallocMetadata**)) % (32*128*1024);
+    int diff = (32*128*1024) - relventSize + 12 * sizeof(MallocMetadata**);
     memory_base = sbrk(diff);
     memory_base = sbrk(32*128*1024);
-    size_table = (MallocMetadata**)memory_base - 11;        //points to the 11-size table
+    size_table = (MallocMetadata**)memory_base - 12;        //points to the 11-size table
     blocks_base = (MallocMetadata*)memory_base;     //points to the start of the metadata blocks
-    for (int i = 0 ; i < 10 ; i++)
+    for (int i = 0 ; i < 12 ; i++)
         size_table[i] = nullptr;
     size_table[10] = blocks_base;   //ptr from table to max_size linked list
+    mmapBlock = size_table[11];
     for (int i = 0; i < 32 ; ++i)
     {
         MallocMetadata mallocMetadata;
@@ -68,12 +69,12 @@ void memory_data()
 
 void* mapMalloc(size_t size)
 {
-    void* ptr = mmap(nullptr, size+sizeof(MallocMetadata), PROT_READ | PROT_WRITE, MAP_ANONYMOUS, -1, 0);
+    void* ptr = mmap(nullptr, size+sizeof(MallocMetadata), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if(ptr == (void*) -1)
         return nullptr;
     stats.allocated_bytes+=size+sizeof(MallocMetadata);
     stats.allocated_blocks+=1;
-    MallocMetadata meta = {cookie, size, false, nullptr, mmapBlock};
+    MallocMetadata meta = {cookie, size +  sizeof(MallocMetadata), false, mmapBlock, nullptr};
     memmove(ptr, &meta, sizeof(MallocMetadata));
     mmapBlock = (MallocMetadata*)ptr;
     return (MallocMetadata*)ptr + 1;
@@ -116,8 +117,8 @@ void* findBlock(int sizeFactor)
 
     while (splitCnt > 0)
     {
-        stats.allocated_blocks+=1;
-        stats.free_blocks+=1;
+        stats.allocated_blocks += 1;
+        stats.free_blocks += 1;
         finalBlock->size  = finalBlock->size / 2;
         long long unsigned int buddyAddress = (size_t)finalBlock ^ finalBlock->size;
 
@@ -127,6 +128,7 @@ void* findBlock(int sizeFactor)
         MallocMetadata* buddy = (MallocMetadata*)buddyAddress;
         size_t curSize = 128 * pow(2, sizeFactor + splitCnt);
         *buddy = {cookie, curSize, true, tempNext, nullptr};
+
         size_table[sizeFactor] = buddy;
         if (tempNext)
         {
@@ -137,12 +139,13 @@ void* findBlock(int sizeFactor)
     }
 
     MallocMetadata* tempNext = size_table[sizeFactor];
-    size_table[sizeFactor] = finalBlock;
     size_t curSize = 128 * pow(2, sizeFactor);
     *finalBlock = {cookie, curSize, false, tempNext, nullptr};
+    size_table[sizeFactor] = finalBlock;
     if (tempNext)
         tempNext->prev = finalBlock;
-    stats.free_bytes-=finalBlock->size;
+    stats.free_bytes -= finalBlock->size;
+    stats.free_blocks--;
     return finalBlock;
 }
 
@@ -223,20 +226,20 @@ void* scalloc(size_t num, size_t size)
 
 void mmapFree(void* ptr)
 {
-    MallocMetadata *temp = (MallocMetadata *) ptr;
-    temp--;
+    MallocMetadata *temp = (MallocMetadata *) ptr - 1;
     if (temp->next)
         temp->next->prev = temp->prev;
     if(temp->prev)
         temp->prev->next = temp->next;
     stats.allocated_blocks -= 1;
     stats.allocated_bytes -= temp->size;
-    munmap(temp, temp->size);
+    munmap(ptr, temp->size);
 }
 
 void sfree(void* p)
 {
     MallocMetadata* block = (MallocMetadata*)p - 1;
+
     if(block->cookie != cookie)
         exit(0xdeadbeef);
     if (block->is_free)
@@ -250,12 +253,17 @@ void sfree(void* p)
         MallocMetadata* mergedBlock = mergeBuddies(block,  MAX_SIZE);
         mergedBlock->is_free = true;
         stats.free_bytes += block->size;
-        stats.free_blocks+=1;
+        stats.free_blocks += 1;
     }
+
 }
 
 
-void* srealloc(void* oldp, size_t size) {
+void* srealloc(void* oldp, size_t size)
+{
+    if (size == 0 || size > 1e8)
+        return nullptr;
+
     MallocMetadata* temp = (MallocMetadata*) oldp;
     temp--;
     if(temp->cookie != cookie)
@@ -265,18 +273,17 @@ void* srealloc(void* oldp, size_t size) {
     if(temp->size > MAX_SIZE - sizeof(MallocMetadata))
     {
         void* ptr = smalloc(size);
-        memmove(ptr,oldp,temp->size);
+        memmove(ptr,oldp,temp->size - sizeof(MallocMetadata));
         mmapFree(oldp);
         return ptr;
     }
-    if (size == 0 || size > 1e8)
-        return nullptr;
+
     if (!oldp)
         return smalloc(size);
     size_t reqSize = size + sizeof(MallocMetadata);
     if (((MallocMetadata*)oldp-1)->size >= reqSize)
         return oldp;
-    MallocMetadata* mergedBlock = mergeBuddies((MallocMetadata*)oldp - 1,  reqSize);           //////////////write mergeBlocks func
+    MallocMetadata* mergedBlock = mergeBuddies((MallocMetadata*)oldp - 1,  reqSize);
     if (mergedBlock->size >= reqSize)
     {
         sfree(oldp);
@@ -336,6 +343,8 @@ int main()
     void* temp2 = smalloc(100);
     void* temp3 = smalloc(100);
     void* temp4 = smalloc(2*128*1024);
+    std::cout<<"free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
+    std::cout<<"free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
     MallocMetadata* tempM = (MallocMetadata*)temp1 -1;
     std::cout<<temp1<<' '<< tempM->size<<std::endl;
     tempM = (MallocMetadata*)temp2-1;
@@ -344,42 +353,46 @@ int main()
     std::cout<<temp3<<' '<<tempM->size<<std::endl;
     tempM=(MallocMetadata*)temp4-1;
     std::cout<<temp4<<' '<<tempM->size<<std::endl;
-    temp4= realloc(temp4,3*128*1024);
-    tempM=(MallocMetadata*)temp4;
+    temp4= srealloc(temp4,3*128*1024);
+    std::cout<<"r1     free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
+    std::cout<<"r2     free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
+    tempM=(MallocMetadata*)temp4-1;
     std::cout<<temp4<<' '<<tempM->size<<std::endl;
-    temp3 = realloc(temp3,550);
-    tempM=(MallocMetadata*)temp3;
+    temp3 = srealloc(temp3,550);
+    std::cout<<"r3     free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
+    std::cout<<"r4     free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
+    /*tempM=(MallocMetadata*)temp3-1;
     std::cout<<temp3<<' '<<tempM->size<<std::endl;
     for (int i = 0; i < 10; ++i)
     {
       void* ptr = smalloc(100*(i+1));
-      tempM=(MallocMetadata*)ptr;
+      tempM=(MallocMetadata*)ptr-1;
       std::cout<<ptr<<' '<<tempM->size<<std::endl;
       sfree(ptr);
     }
-    std::cout<<"free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
+    std::cout<<"1     free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
+    std::cout<<"2     free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
     std::cout<<stats.size_meta_data<<std::endl;
     sfree(temp1);
     sfree(temp2);
     sfree(temp3);
     sfree(temp4);
-    std::cout<<"free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
+    std::cout<<"3       free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
+    std::cout<<"4       free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
     temp1 = smalloc(100);
-    std::cout<<"free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
+    std::cout<<"5       free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
+    std::cout<<"6   free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
     sfree(temp1);
     temp2 = smalloc(3*128*1024);
-    std::cout<<"free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
+    std::cout<<"7   free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
+    std::cout<<"8   free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
     sfree(temp2);
     temp1 = smalloc(100);
-    std::cout<<"free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    temp1 = realloc(temp1,300);
-    std::cout<<"free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
+    std::cout<<"9   free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
+    std::cout<<"10  free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
+    temp1 = srealloc(temp1,300);
+    std::cout<<"11  free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
+    std::cout<<"12  free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;*/
 
     return 0;
 }
