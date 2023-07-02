@@ -245,8 +245,10 @@ void* srealloc(void* oldp, size_t size) {
         return oldp;
     if(temp->size>pow(2,17)- sizeof(MallocMetadata))
     {
+        void* ptr = smalloc(size);
+        memmove(ptr,oldp,temp->size);
         mmapFree(oldp);
-        return smalloc(size);
+        return ptr;
     }
     if (size == 0 || size > 1e8)
         return nullptr;
@@ -255,9 +257,6 @@ void* srealloc(void* oldp, size_t size) {
     size_t reqSize = size + sizeof(MallocMetadata);
     if (((MallocMetadata*)oldp-1)->size >= reqSize)
         return oldp;
-
-    ///////////////////////////// mmap realloc ?
-
     MallocMetadata* mergedBlock = mergeBuddies((MallocMetadata*)oldp - 1,  reqSize);           //////////////write mergeBlocks func
     if (mergedBlock->size >= reqSize)
     {
