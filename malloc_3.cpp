@@ -5,6 +5,7 @@
 #include <memory.h>
 
 # define MOD_BLOCK_SIZE 4096
+#define MAX_SIZE 128 * 1024
 
 
 struct  MallocMetadata {
@@ -107,7 +108,7 @@ void* findBlock(int sizeFactor)
     MallocMetadata* tempNext = size_table[sizeFactor];
     size_table[sizeFactor] = finalBlock;
     size_t curSize = 128 * pow(2, sizeFactor);
-    *finalBlock = {curSize, true, tempNext, nullptr};
+    *finalBlock = {curSize, false, tempNext, nullptr};
     if (tempNext)
         tempNext->prev = finalBlock;
     return finalBlock;
@@ -120,7 +121,9 @@ MallocMetadata* mergeBuddies(MallocMetadata* block, size_t size)
     long long unsigned int buddyAddress = blockAddress ^ block->size;
     MallocMetadata* buddy = (MallocMetadata*)buddyAddress;
     size_t curSize = block->size;
-    int sizeFactor = log2((block->size)/128);
+    int sizeFactor = log2((block->size)) - 7;
+
+    std::cout << sizeFactor << std::endl;
 
     if (block->next)
         block->next->prev = block->prev;
@@ -138,6 +141,7 @@ MallocMetadata* mergeBuddies(MallocMetadata* block, size_t size)
             buddy->prev->next = buddy->next;
         else
             size_table[sizeFactor] = buddy->next;
+
         sizeFactor++;
         blockAddress = blockAddress < buddyAddress ? blockAddress : buddyAddress;
         block = (MallocMetadata*)blockAddress;
@@ -185,10 +189,26 @@ void* scalloc(size_t num, size_t size)
     return address;
 }
 
-
-void sfree(void* p)     ////////////////////////////////////////////////////
+void mmapFree(void* p)
 {
 
+}
+
+
+void sfree(void* p)
+{
+    MallocMetadata* block = (MallocMetadata*)p - 1;
+    if (block->is_free)
+        return;
+
+    if (block->size > MAX_SIZE)
+        mmapFree(p);        //////////////////////////////////////// mmap
+
+    else
+    {
+        MallocMetadata* mergedBlock = mergeBuddies(block,  MAX_SIZE);
+        mergedBlock->is_free = true;
+    }
 }
 
 
@@ -203,17 +223,17 @@ void* srealloc(void* oldp, size_t size) {
 
     ///////////////////////////// mmap realloc ?
 
-    MallocMetadata* mergedBlock = mergeBuddies((MallocMetadata*)oldp,  reqSize);           //////////////write mergeBlocks func
+    MallocMetadata* mergedBlock = mergeBuddies((MallocMetadata*)oldp - 1,  reqSize);           //////////////write mergeBlocks func
     if (mergedBlock->size >= reqSize)
     {
         sfree(oldp);
-        memcpy(mergedBlock, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
+        memmove(mergedBlock + 1, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
         mergedBlock->is_free = false;
-        return mergedBlock;
+        return mergedBlock + 1;
     }
 
     MallocMetadata* newBlock = (MallocMetadata*)smalloc(size);
-    memcpy(newBlock, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
+    memmove(newBlock, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
     sfree(oldp);
     return newBlock;
 }
@@ -221,10 +241,13 @@ void* srealloc(void* oldp, size_t size) {
 
 int main()
 {
-    void* ad1 = smalloc(100);
-    std::cout << ad1 << std::endl;
+    void* ad1 = smalloc(10);
+    std::cout << ad1  << "   +20" << std::endl;
+    std::cout << smalloc(10)  << "   +80" << std::endl;
     void* ad2 = srealloc(ad1, 200);
-    std::cout << ad2 << std::endl;
+    std::cout << ad2  << "   +80" << std::endl;
+    sfree(ad2);
+    std::cout << smalloc(200)  << "   =same" << std::endl;
     //std::cout << smalloc(30) << std::endl;
     return 0;
 }
