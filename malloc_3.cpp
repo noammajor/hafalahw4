@@ -114,6 +114,47 @@ void* findBlock(int sizeFactor)
 }
 
 
+MallocMetadata* mergeBuddies(MallocMetadata* block, size_t size)
+{
+    long long unsigned int blockAddress = (size_t)block;
+    long long unsigned int buddyAddress = blockAddress ^ block->size;
+    MallocMetadata* buddy = (MallocMetadata*)buddyAddress;
+    size_t curSize = block->size;
+    int sizeFactor = log2((block->size)/128);
+
+    if (block->next)
+        block->next->prev = block->prev;
+    if (block->prev)
+        block->prev->next = block->next;
+    else
+        size_table[sizeFactor] = block->next;
+
+    while (buddy->is_free && curSize < size)
+    {
+        curSize *= 2;
+        if (buddy->next)
+            buddy->next->prev = buddy->prev;
+        if (buddy->prev)
+            buddy->prev->next = buddy->next;
+        else
+            size_table[sizeFactor] = buddy->next;
+        sizeFactor++;
+        blockAddress = blockAddress < buddyAddress ? blockAddress : buddyAddress;
+        block = (MallocMetadata*)blockAddress;
+        block->size = curSize;
+        buddyAddress = blockAddress ^ curSize;
+        buddy = (MallocMetadata*)buddyAddress;
+    }
+
+    block->next = size_table[sizeFactor];
+    block->prev = nullptr;
+    size_table[sizeFactor] = block;
+    if (block->next)
+        block->next->prev = block;
+    return block;
+}
+
+
 void* smalloc(size_t size)
 {
     if (size <= 0)
@@ -131,7 +172,8 @@ void* smalloc(size_t size)
         maxSize = (maxSize + sizeof(MallocMetadata)) * 2 - sizeof(MallocMetadata);
         reqSizeFactor++;
     }
-    return findBlock(reqSizeFactor);
+    MallocMetadata* result = (MallocMetadata*)findBlock(reqSizeFactor) + 1;     //add meteData size
+    return result;
 }
 
 
@@ -144,64 +186,45 @@ void* scalloc(size_t num, size_t size)
 }
 
 
+void sfree(void* p)     ////////////////////////////////////////////////////
+{
+
+}
+
+
 void* srealloc(void* oldp, size_t size) {
     if (size == 0 || size > 1e8)
         return nullptr;
     if (!oldp)
         return smalloc(size);
-    if (((MallocMetadata*)oldp)->size >= size + 1)
+    size_t reqSize = size + sizeof(MallocMetadata);
+    if (((MallocMetadata*)oldp-1)->size >= reqSize)
         return oldp;
 
     ///////////////////////////// mmap realloc ?
 
-    MallocMetadata *temp = oldp;
-    double result = log2(size);
-    int roundedResult = (int)round(result);
-    if (result != roundedResult)
-        roundedResult++;
-    MallocMetadata *ptr = memory;
-    ptr = ptr + sizeof(MallocMetadata *) * (roundedResult - 7);
-    while (roundedResult - 7 < 11) {
-        if (ptr) {
-            MallocMetadata *temp = ptr;
-            while (temp && !temp->is_free) {
-                temp = temp->next;
-            }
-            if (temp) {
-                if (temp->size < size * 2) {
-                    memcpy(oldp, temp, static_cast<MallocMetadata *>(oldp)->size);
-                    sfree(oldp);
-                    temp->is_free = false;
-                    return temp;
-                } else {
-                    void *tempRet = actual_cut();//later
-                    memcpy(oldp, tempRet, static_cast<MallocMetadata *>(oldp)->size);
-                    sfree(oldp);
-                    return tempRet;
-                }
-            }
-        }
-        roundedResult++;
-        ptr = ptr + sizeof(MallocMetadata *);
+    MallocMetadata* mergedBlock = mergeBuddies((MallocMetadata*)oldp,  reqSize);           //////////////write mergeBlocks func
+    if (mergedBlock->size >= reqSize)
+    {
+        sfree(oldp);
+        memcpy(mergedBlock, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
+        mergedBlock->is_free = false;
+        return mergedBlock;
     }
+
+    MallocMetadata* newBlock = (MallocMetadata*)smalloc(size);
+    memcpy(newBlock, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
     sfree(oldp);
-    return nullptr;
+    return newBlock;
 }
 
 
 int main()
 {
-    /*MallocMetadata* ptr = (MallocMetadata*)memory_base + 11;
-    int i = 1;
-    while (ptr->next)
-    {
-        std::cout << "block #" << i << "  size: " << ptr->size << std::endl;
-        i++;
-        ptr = ptr->next;
-    }
-    std::cout << "block #" << i << "  size: " << ptr->size << std::endl;
-    size_t size = pow(2,7) - sizeof(MallocMetadata);
-    std::cout << size ;*/
-    std::cout << smalloc(30) << std::endl;
+    void* ad1 = smalloc(100);
+    std::cout << ad1 << std::endl;
+    void* ad2 = srealloc(ad1, 200);
+    std::cout << ad2 << std::endl;
+    //std::cout << smalloc(30) << std::endl;
     return 0;
 }
