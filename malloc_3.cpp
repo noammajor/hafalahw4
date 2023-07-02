@@ -93,12 +93,8 @@ void* findBlock(int sizeFactor)
             sizeFactor++;
         }
         finalBlock = size_table[sizeFactor];
-        int i = 1;
         while (finalBlock && finalBlock->cookie == cookie && !finalBlock->is_free && finalBlock->size > 0)
-        {
-            i++;
             finalBlock = finalBlock->next;
-        }
         if (finalBlock && finalBlock->cookie != cookie)
             exit(0xdeadbeef);
         if (finalBlock && finalBlock->is_free)
@@ -166,7 +162,7 @@ MallocMetadata* mergeBuddies(MallocMetadata* block, size_t size)
     else
         size_table[sizeFactor] = block->next;
 
-    while (buddy->is_free && curSize < size)
+    while (buddy->is_free && buddy->size == block->size && curSize < size)
     {
         stats.allocated_blocks -= 1;
         stats.free_blocks -= 1;
@@ -293,7 +289,8 @@ void* srealloc(void* oldp, size_t size) {
 
     MallocMetadata* newBlock = (MallocMetadata*)smalloc(size);
     memmove(newBlock, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
-    sfree(mergedBlock);
+    sfree(mergedBlock+1);
+    //mergedBlock->is_free = true;
     return newBlock;
 }
 
@@ -337,7 +334,7 @@ size_t _size_meta_data()
 int main()
 {
     void* ad1 = smalloc(10);
-    std::cout << ad1  << "   +20" << std::endl;
+    std::cout << ad1  << "   +28" << std::endl;
     std::cout << smalloc(10)  << "   +80" << std::endl;
     void* ad2 = srealloc(ad1, 200);
     std::cout << ad2  << "   +80" << std::endl;
