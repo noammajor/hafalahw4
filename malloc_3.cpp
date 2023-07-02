@@ -100,8 +100,8 @@ void* findBlock(int sizeFactor)
             exit(0xdeadbeef);
         if (finalBlock && finalBlock->is_free)
             found = true;
-        splitCnt++;
-        sizeFactor++;
+        splitCnt++;                                                             //1
+        sizeFactor++;                                                           //2
     }
     splitCnt--;
     sizeFactor--;
@@ -119,7 +119,7 @@ void* findBlock(int sizeFactor)
     {
         stats.allocated_blocks += 1;
         stats.free_blocks += 1;
-        finalBlock->size  = finalBlock->size / 2;
+        finalBlock->size  = pow(2, sizeFactor-1) * 128;
         long long unsigned int buddyAddress = (size_t)finalBlock ^ finalBlock->size;
 
         splitCnt--;
@@ -361,7 +361,7 @@ int main()
     temp3 = srealloc(temp3,550);
     std::cout<<"r3     free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
     std::cout<<"r4     free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    /*tempM=(MallocMetadata*)temp3-1;
+    tempM=(MallocMetadata*)temp3-1;
     std::cout<<temp3<<' '<<tempM->size<<std::endl;
     for (int i = 0; i < 10; ++i)
     {
