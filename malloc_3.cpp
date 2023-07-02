@@ -57,8 +57,8 @@ void memory_data()
             mallocMetadata = {cookie, 128 * 1024, true,blocks_base + MOD_BLOCK_SIZE * (i + 1),blocks_base + MOD_BLOCK_SIZE * (i - 1)};
         memmove(blocks_base + i * MOD_BLOCK_SIZE, &mallocMetadata, sizeof(MallocMetadata));
     }
-    stats->allocated_bytes = 32;
-    stats->allocated_blocks = 32*128*1024;
+    stats->allocated_bytes = 32*128*1024;
+    stats->allocated_blocks = 32;
     stats->free_blocks = 32;
     stats->free_bytes = 32*128*1024;
     stats->size_meta_data = sizeof(MallocMetadata);
@@ -71,6 +71,7 @@ void* mapMalloc(size_t size)
     if(ptr == (void*) -1)
         return nullptr;
     stats->allocated_bytes+=size+sizeof(MallocMetadata);
+    stats->allocated_blocks+=1;
     MallocMetadata meta = {cookie, size, false, nullptr, mmapBlock};
     memmove(ptr, &meta, sizeof(MallocMetadata));
     mmapBlock = (MallocMetadata*)ptr;
@@ -118,6 +119,8 @@ void* findBlock(int sizeFactor)
 
     while (splitCnt > 0)
     {
+        stats->allocated_blocks+=1;
+        stats->free_blocks+=1;
         finalBlock->size  = finalBlock->size / 2;
         long long unsigned int buddyAddress = (size_t)finalBlock ^ finalBlock->size;
 
@@ -142,6 +145,7 @@ void* findBlock(int sizeFactor)
     *finalBlock = {cookie, curSize, false, tempNext, nullptr};
     if (tempNext)
         tempNext->prev = finalBlock;
+    stats->free_bytes-=finalBlock->size;
     return finalBlock;
 }
 
@@ -163,6 +167,8 @@ MallocMetadata* mergeBuddies(MallocMetadata* block, size_t size)
 
     while (buddy->is_free && curSize < size)
     {
+        stats->allocated_blocks-=1;
+        stats->free_blocks-=1;
         curSize *= 2;
         if (buddy->next)
             buddy->next->prev = buddy->prev;
@@ -226,6 +232,8 @@ void mmapFree(void* ptr)
         temp->next->prev = temp->prev;
     if(temp->prev)
         temp->prev->next = temp->next;
+    stats->allocated_blocks -= 1;
+    stats->allocated_bytes -= temp->size;
     munmap(temp, temp->size);
 }
 
@@ -244,6 +252,8 @@ void sfree(void* p)
     {
         MallocMetadata* mergedBlock = mergeBuddies(block,  MAX_SIZE);
         mergedBlock->is_free = true;
+        stats->free_bytes += block->size;
+        stats->free_blocks+=1;
     }
 }
 
@@ -275,6 +285,8 @@ void* srealloc(void* oldp, size_t size) {
         sfree(oldp);
         memmove(mergedBlock + 1, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
         mergedBlock->is_free = false;
+        stats->free_bytes -= mergedBlock->size;
+        stats->free_blocks --;
         return mergedBlock + 1;
     }
 
@@ -284,6 +296,42 @@ void* srealloc(void* oldp, size_t size) {
     return newBlock;
 }
 
+//Returns the number of allocated blocks in the heap that are currently free
+size_t _num_free_blocks()
+{
+    return stats.free_blocks;
+}
+
+//Returns the number of bytes in all allocated blocks in the heap that are currently free,
+//        excluding the bytes used by the meta-data structs.
+size_t _num_free_bytes()
+{
+    return stats.free_bytes;
+}
+
+//Returns the overall (free and used) number of allocated blocks in the heap.
+size_t _num_allocated_blocks()
+{
+    return stats.allocated_blocks;
+}
+
+//Returns the overall number (free and used) of allocated bytes in the heap, excluding the bytes used by the meta-data structs.
+size_t _num_allocated_bytes()
+{
+    return stats.allocated_bytes;
+}
+
+//Returns the overall number of meta-data bytes currently in the heap.
+size_t _num_meta_data_bytes()
+{
+    return (stats.size_meta_data * (stats.allocated_blocks);
+}
+
+//Returns the number of bytes of a single meta-data structure in your system
+size_t _size_meta_data()
+{
+    return stats.size_meta_data;
+}
 
 int main()
 {
