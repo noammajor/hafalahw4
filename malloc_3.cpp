@@ -123,8 +123,6 @@ MallocMetadata* mergeBuddies(MallocMetadata* block, size_t size)
     size_t curSize = block->size;
     int sizeFactor = log2((block->size)) - 7;
 
-    std::cout << sizeFactor << std::endl;
-
     if (block->next)
         block->next->prev = block->prev;
     if (block->prev)
@@ -234,7 +232,7 @@ void* srealloc(void* oldp, size_t size) {
 
     MallocMetadata* newBlock = (MallocMetadata*)smalloc(size);
     memmove(newBlock, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
-    sfree(oldp);
+    sfree(mergedBlock);
     return newBlock;
 }
 
