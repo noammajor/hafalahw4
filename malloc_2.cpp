@@ -38,8 +38,6 @@ void* smalloc(size_t size)
             ptr->is_free = false;
             stats.free_blocks--;
             stats.free_bytes -= ptr->size;
-            stats.allocated_blocks++;
-            stats.allocated_bytes += ptr->size;
             return ptr + 1;     // adds sizeof ptr one time
         }
     }       //allocate new block:
@@ -127,7 +125,7 @@ size_t _num_free_blocks()
 //        excluding the bytes used by the meta-data structs.
 size_t _num_free_bytes()
 {
-    return stats.free_bytes - stats.free_blocks * stats.size_meta_data;
+    return stats.free_bytes;
 }
 
 //Returns the overall (free and used) number of allocated blocks in the heap.
@@ -139,7 +137,7 @@ size_t _num_allocated_blocks()
 //Returns the overall number (free and used) of allocated bytes in the heap, excluding the bytes used by the meta-data structs.
 size_t _num_allocated_bytes()
 {
-    return stats.allocated_bytes - stats.allocated_blocks * stats.size_meta_data;
+    return stats.allocated_bytes;
 }
 
 //Returns the overall number of meta-data bytes currently in the heap.
@@ -155,7 +153,7 @@ size_t _size_meta_data()
 }
 
 
-int main()
+/*int main()
 {
     std::cout << "size of MallocMetadata is : " << _size_meta_data() << std::endl;
     void* ad1 = smalloc(5);
@@ -173,11 +171,11 @@ int main()
     std::cout << "free blocks : " << _num_free_blocks() << "  free bytes: " << _num_free_bytes()
               << "   allocated blocks : " << _num_allocated_blocks() << "  allocated bytes: " << _num_allocated_bytes()
               << "   num meta data: " << _num_meta_data_bytes() <<  std::endl;
-    /*std::cout << smalloc(1e8+1) << " illegal" << std::endl;
+    std::cout << smalloc(1e8+1) << " illegal" << std::endl;
     std::cout << scalloc(0, 5) << " illegal" << std::endl;
     std::cout << scalloc(8, 2) << "  size: 16  bytes" << std::endl;
     std::cout << scalloc(8, 4) << "  size: 32  bytes" << std::endl;
-    std::cout << scalloc(1e8, 2) << " illegal" << std::endl;*/
+    std::cout << scalloc(1e8, 2) << " illegal" << std::endl;
     std::cout << srealloc(ad1, 10) << " srealloc, size: 10  bytes" << std::endl;
     std::cout << "free blocks : " << _num_free_blocks() << "  free bytes: " << _num_free_bytes()
               << "   allocated blocks : " << _num_allocated_blocks() << "  allocated bytes: " << _num_allocated_bytes()
@@ -191,4 +189,4 @@ int main()
 
 
 
-}
+}*/
