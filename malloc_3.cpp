@@ -336,13 +336,54 @@ size_t _size_meta_data()
 
 int main()
 {
-    void* ad1 = smalloc(10);
-    std::cout << ad1  << "   +20" << std::endl;
-    std::cout << smalloc(10)  << "   +80" << std::endl;
-    void* ad2 = srealloc(ad1, 200);
-    std::cout << ad2  << "   +80" << std::endl;
-    sfree(ad2);
-    std::cout << smalloc(200)  << "   =same" << std::endl;
-    //std::cout << smalloc(30) << std::endl;
+    void* temp1 = smalloc(100);
+    void* temp2 = smalloc(100);
+    void* temp3 = smalloc(100);
+    void* temp4 = smalloc(2*128*1024);
+    MallocMetadata* tempM = (MallocMetadata)temp1;
+    std::cout<<temp1<<' '<< tempM->size<<std::endl;
+    tempM = (MallocMetadata)temp2;
+    std::cout<<temp2<<' '<< tempM->size<<std::endl;
+    tempM = (MallocMetadata)temp3;
+    std::cout<<temp3<<' '<<tempM->size<<std::endl;
+    tempM=(MallocMetadata)temp4;
+    std::cout<<temp4<<' '<<tempM->size<<std::endl;
+    temp4= realloc(temp4,3*128*1024);
+    tempM=(MallocMetadata)temp4;
+    std::cout<<temp4<<' '<<tempM->size<<std::endl;
+    temp3 = realloc(temp3,550);
+    tempM=(MallocMetadata)temp3;
+    std::cout<<temp3<<' '<<tempM->size<<std::endl;
+    for (int i = 0; i < 10; ++i)
+    {
+      void* ptr = smalloc(100*(i+1));
+      tempM=(MallocMetadata)ptr;
+      std::cout<<ptr<<' '<<tempM->size<<std::endl;
+      sfree(ptr);
+    }
+    std::cout<<"free blocks: "<<stats->free_blocks<<" allocated blocks: "<<stats->allocated_blocks<<std::endl;
+    std::cout<<"free bytes: "<<stats->free_bytes<< " allocated bytes:"<<stats->allocated_bytes<<std::endl;
+    std::cout<<stats->size_meta_data<<std::endl;
+    sfree(temp1);
+    sfree(temp2);
+    sfree(temp3);
+    sfree(temp4);
+    std::cout<<"free blocks: "<<stats->free_blocks<<" allocated blocks: "<<stats->allocated_blocks<<std::endl;
+    std::cout<<"free bytes: "<<stats->free_bytes<< " allocated bytes:"<<stats->allocated_bytes<<std::endl;
+    void* temp1 = smalloc(100);
+    std::cout<<"free blocks: "<<stats->free_blocks<<" allocated blocks: "<<stats->allocated_blocks<<std::endl;
+    std::cout<<"free bytes: "<<stats->free_bytes<< " allocated bytes:"<<stats->allocated_bytes<<std::endl;
+    sfree(temp1);
+    void* temp2 = smalloc(3*128*1024);
+    std::cout<<"free blocks: "<<stats->free_blocks<<" allocated blocks: "<<stats->allocated_blocks<<std::endl;
+    std::cout<<"free bytes: "<<stats->free_bytes<< " allocated bytes:"<<stats->allocated_bytes<<std::endl;
+    sfree(temp2);
+    void* temp1 = smalloc(100);
+    std::cout<<"free blocks: "<<stats->free_blocks<<" allocated blocks: "<<stats->allocated_blocks<<std::endl;
+    std::cout<<"free bytes: "<<stats->free_bytes<< " allocated bytes:"<<stats->allocated_bytes<<std::endl;
+    temp1 = realloc(temp1,300);
+    std::cout<<"free blocks: "<<stats->free_blocks<<" allocated blocks: "<<stats->allocated_blocks<<std::endl;
+    std::cout<<"free bytes: "<<stats->free_bytes<< " allocated bytes:"<<stats->allocated_bytes<<std::endl;
+
     return 0;
 }
