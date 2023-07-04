@@ -70,9 +70,9 @@ void memory_data()
 void* mapMalloc(size_t size, bool isSmalloc)
 {
     void* ptr = nullptr;
-    if(isSmalloc && size=>4e+6)
+    if(isSmalloc && size >= 4e+6)
         ptr = mmap(nullptr,size+sizeof(MallocMetadata),PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,-1, 0);
-    else if(!isSmalloc && size=>2e+6)
+    else if(!isSmalloc && size >= 2e+6)
         ptr = mmap(nullptr,size+sizeof(MallocMetadata),PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,-1, 0);
     else
         ptr = mmap(nullptr, size+sizeof(MallocMetadata), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -201,13 +201,17 @@ MallocMetadata* mergeBuddies(MallocMetadata* block, size_t size)
 
 void* smalloc(size_t size)
 {
-    if (size <= 0 || size > 1e8)
-        return nullptr;
     if (!memory_base)       // allocate the heap on the first call
         memory_data();
 
+    if (size <= 0 || size > 1e8)
+        return nullptr;
+
     if (size > MAX_SIZE - sizeof(MallocMetadata))
         return mapMalloc(size,true);
+
+    if (size + stats.size_meta_data > stats.free_bytes)
+        return nullptr;
 
     size_t maxSize = pow(2,7) - sizeof(MallocMetadata);
     int reqSizeFactor = 0;
@@ -224,7 +228,7 @@ void* smalloc(size_t size)
 void* scalloc(size_t num, size_t size)
 {
     void *address= nullptr;
-    if(1e8 => size*num && num*size => 2e+6)
+    if(1e8 >= size*num && num*size >= 2e+6)
         address = mapMalloc(num*size,false);
     else
         address = smalloc(num * size);
