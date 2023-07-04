@@ -302,7 +302,7 @@ void* srealloc(void* oldp, size_t size)
 
     MallocMetadata* newBlock = (MallocMetadata*)smalloc(size);
     memmove(newBlock, oldp, ((MallocMetadata*)oldp-1)->size - sizeof(MallocMetadata));
-    sfree(mergedBlock + 1);
+    sfree(mergedBlock);
     return newBlock;
 }
 
