@@ -204,6 +204,9 @@ void* smalloc(size_t size)
     if (size > MAX_SIZE - sizeof(MallocMetadata))
         return mapMalloc(size);
 
+    if (size + stats.size_meta_data > stats.free_bytes)
+        return nullptr;
+
     size_t maxSize = pow(2,7) - sizeof(MallocMetadata);
     int reqSizeFactor = 0;
     while (size > maxSize)
@@ -238,6 +241,9 @@ void mmapFree(void* ptr)
 
 void sfree(void* p)
 {
+    if (!p)
+        return;
+
     MallocMetadata* block = (MallocMetadata*)p - 1;
 
     if(block->cookie != cookie)
