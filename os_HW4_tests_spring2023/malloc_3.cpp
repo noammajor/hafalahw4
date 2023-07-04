@@ -198,7 +198,7 @@ void* smalloc(size_t size)
     if (!memory_base)       // allocate the heap on the first call
         memory_data();
 
-    if (size <= 0)
+    if (size <= 0 || size > 1e8)
         return nullptr;
 
     if (size > MAX_SIZE - sizeof(MallocMetadata))

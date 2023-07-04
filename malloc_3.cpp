@@ -195,7 +195,7 @@ MallocMetadata* mergeBuddies(MallocMetadata* block, size_t size)
 
 void* smalloc(size_t size)
 {
-    if (size <= 0)
+    if (size <= 0 || size > 1e8)
         return nullptr;
     if (!memory_base)       // allocate the heap on the first call
         memory_data();
