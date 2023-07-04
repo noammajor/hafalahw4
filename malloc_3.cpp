@@ -195,10 +195,11 @@ MallocMetadata* mergeBuddies(MallocMetadata* block, size_t size)
 
 void* smalloc(size_t size)
 {
-    if (size <= 0 || size > 1e8)
-        return nullptr;
     if (!memory_base)       // allocate the heap on the first call
         memory_data();
+
+    if (size <= 0 || size > 1e8)
+        return nullptr;
 
     if (size > MAX_SIZE - sizeof(MallocMetadata))
         return mapMalloc(size);
@@ -334,64 +335,4 @@ size_t _num_meta_data_bytes()
 size_t _size_meta_data()
 {
     return stats.size_meta_data;
-}
-
-int main()
-{
-    void* temp1 = smalloc(100);
-    void* temp2 = smalloc(100);
-    void* temp3 = smalloc(100);
-    void* temp4 = smalloc(2*128*1024);
-    std::cout<<"free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    MallocMetadata* tempM = (MallocMetadata*)temp1 -1;
-    std::cout<<temp1<<' '<< tempM->size<<std::endl;
-    tempM = (MallocMetadata*)temp2-1;
-    std::cout<<temp2<<' '<< tempM->size<<std::endl;
-    tempM = (MallocMetadata*)temp3-1;
-    std::cout<<temp3<<' '<<tempM->size<<std::endl;
-    tempM=(MallocMetadata*)temp4-1;
-    std::cout<<temp4<<' '<<tempM->size<<std::endl;
-    temp4= srealloc(temp4,3*128*1024);
-    std::cout<<"r1     free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"r2     free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    tempM=(MallocMetadata*)temp4-1;
-    std::cout<<temp4<<' '<<tempM->size<<std::endl;
-    temp3 = srealloc(temp3,550);
-    std::cout<<"r3     free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"r4     free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    tempM=(MallocMetadata*)temp3-1;
-    std::cout<<temp3<<' '<<tempM->size<<std::endl;
-    for (int i = 0; i < 10; ++i)
-    {
-      void* ptr = smalloc(100*(i+1));
-      tempM=(MallocMetadata*)ptr-1;
-      std::cout<<ptr<<' '<<tempM->size<<std::endl;
-      sfree(ptr);
-    }
-    std::cout<<"1     free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"2     free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    std::cout<<stats.size_meta_data<<std::endl;
-    sfree(temp1);
-    sfree(temp2);
-    sfree(temp3);
-    sfree(temp4);
-    std::cout<<"3       free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"4       free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    temp1 = smalloc(100);
-    std::cout<<"5       free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"6   free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    sfree(temp1);
-    temp2 = smalloc(3*128*1024);
-    std::cout<<"7   free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"8   free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    sfree(temp2);
-    temp1 = smalloc(100);
-    std::cout<<"9   free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"10  free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;
-    temp1 = srealloc(temp1,300);
-    std::cout<<"11  free blocks: "<<stats.free_blocks<<" allocated blocks: "<<stats.allocated_blocks<<std::endl;
-    std::cout<<"12  free bytes: "<<stats.free_bytes<< " allocated bytes:"<<stats.allocated_bytes<<std::endl;*/
-
-    return 0;
 }
